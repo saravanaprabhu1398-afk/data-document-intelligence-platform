@@ -42,8 +42,8 @@ logging.basicConfig(
 )
 log = logging.getLogger(__name__)
 
-DAILYMED_API  = "https://dailymed.nlm.nih.gov/dailymed/services/v2/"
-DOWNLOAD_BASE = "https://dailymed.nlm.nih.gov/dailymed/services/v2/spls/"
+DAILYMED_API   = "https://dailymed.nlm.nih.gov/dailymed/services/v2/"
+DOWNLOAD_BASE  = "https://dailymed.nlm.nih.gov/dailymed/getFile.cfm?uniqid={set_id}&type=zip"
 PAGE_SIZE     = 100
 REQUEST_DELAY = 0.25  # seconds between API calls — be polite to the public server
 
@@ -100,7 +100,7 @@ def search_labels(drug_class: str, limit: int) -> Iterator[LabelRecord]:
                 set_id     = set_id,
                 title      = rec.get("title", ""),
                 published  = rec.get("published_date", ""),
-                source_url = DOWNLOAD_BASE + set_id + ".zip",
+                source_url = DOWNLOAD_BASE.format(set_id=set_id),
             )
             fetched += 1
             if fetched >= limit:
