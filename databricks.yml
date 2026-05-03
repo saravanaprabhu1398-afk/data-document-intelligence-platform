@@ -1,0 +1,34 @@
+bundle:
+  name: clinical-document-intelligence-platform
+
+variables:
+  catalog:
+    description: Unity Catalog catalog name
+    default: clinical_docs
+
+  storage_root:
+    description: Root cloud storage path for all raw files (e.g. s3://your-bucket/clinical-docs or abfss://container@account.dfs.core.windows.net/clinical-docs)
+    default: s3://YOUR-BUCKET/clinical-docs
+
+  alert_email:
+    description: Email address for job failure alerts
+    default: your-email@example.com
+
+  env:
+    description: Deployment environment
+    default: dev
+
+targets:
+  dev:
+    mode: development
+    default: true
+    variables:
+      env: dev
+
+  prod:
+    mode: production
+    variables:
+      env: prod
+
+include:
+  - phase1_bronze/jobs/*.yml

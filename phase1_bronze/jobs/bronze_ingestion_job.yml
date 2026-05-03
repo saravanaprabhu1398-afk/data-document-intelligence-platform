@@ -1,0 +1,68 @@
+resources:
+  jobs:
+    bronze_ingestion:
+      name: "clinical-docs-bronze-ingestion-${var.env}"
+      description: "Runs Auto Loader to ingest new FDA drug label PDFs into the Bronze Delta table."
+
+      # ── Schedule ──────────────────────────────────────────────────────────
+      # Runs daily at 02:00 UTC. Adjust or remove for manual-only execution.
+      schedule:
+        quartz_cron_expression: "0 0 2 * * ?"
+        timezone_id: "UTC"
+        pause_status: UNPAUSED
+
+      # ── Notifications ─────────────────────────────────────────────────────
+      email_notifications:
+        on_failure:
+          - ${var.alert_email}
+        no_alert_for_skipped_runs: true
+
+      # ── Shared cluster ────────────────────────────────────────────────────
+      job_clusters:
+        - job_cluster_key: ingestion_cluster
+          new_cluster:
+            spark_version: "15.4.x-scala2.12"   # Databricks Runtime 15.4 LTS
+            node_type_id: "m5d.large"            # 2 cores, 8 GB — sufficient for binary file reads
+            autoscale:
+              min_workers: 1
+              max_workers: 4
+            spark_conf:
+              "spark.databricks.delta.optimizeWrite.enabled": "true"
+              "spark.databricks.delta.autoCompact.enabled":   "true"
+            data_security_mode: "SINGLE_USER"
+            runtime_engine: "PHOTON"
+
+      # ── Tasks ─────────────────────────────────────────────────────────────
+      tasks:
+        - task_key: setup
+          description: "Create catalog, schemas, and tables if they do not exist."
+          job_cluster_key: ingestion_cluster
+          notebook_task:
+            notebook_path: ../notebooks/00_setup
+            base_parameters:
+              catalog:      "${var.catalog}"
+              storage_root: "${var.storage_root}"
+
+        - task_key: ingest_bronze
+          description: "Auto Loader — read new PDFs from cloud storage and append to Bronze table."
+          depends_on:
+            - task_key: setup
+          job_cluster_key: ingestion_cluster
+          notebook_task:
+            notebook_path: ../notebooks/01_ingest_bronze
+            base_parameters:
+              catalog:     "${var.catalog}"
+              source_path: "${var.storage_root}/raw/pdfs"
+              checkpoint:  "${var.storage_root}/_checkpoints/bronze"
+              # batch_id left blank — notebook reads it from the Lakeflow run context
+
+      # ── Health checks ─────────────────────────────────────────────────────
+      health:
+        rules:
+          - metric: RUN_DURATION_SECONDS
+            op: GREATER_THAN
+            value: 7200   # alert if the job takes longer than 2 hours
+
+      # ── Run history ───────────────────────────────────────────────────────
+      max_concurrent_runs: 1
+      timeout_seconds: 10800  # 3-hour hard stop
