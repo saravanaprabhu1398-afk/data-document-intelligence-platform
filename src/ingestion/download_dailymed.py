@@ -2,9 +2,8 @@
 Download a curated oncology slice of FDA drug labels from DailyMed
 and land the XML (SPL) files in a Unity Catalog Volume.
 
-Each DailyMed ZIP bundle contains one XML file (the SPL document) plus
-optional images. This script extracts only the XML and uploads it to
-the target Volume path, preserving the set_id directory structure:
+The DailyMed API v2 serves the SPL XML document directly — no ZIP needed.
+Files are saved preserving the set_id directory structure:
 
     /Volumes/<catalog>/<schema>/<volume>/<set_id>/<set_id>.xml
 
@@ -24,11 +23,9 @@ DailyMed API docs: https://dailymed.nlm.nih.gov/dailymed/app-support-web-service
 from __future__ import annotations
 
 import argparse
-import io
 import logging
 import os
 import time
-import zipfile
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterator
@@ -42,18 +39,16 @@ logging.basicConfig(
 )
 log = logging.getLogger(__name__)
 
-DAILYMED_API   = "https://dailymed.nlm.nih.gov/dailymed/services/v2/"
-DOWNLOAD_BASE  = "https://dailymed.nlm.nih.gov/dailymed/getFile.cfm?uniqid={set_id}&type=zip"
+DAILYMED_API  = "https://dailymed.nlm.nih.gov/dailymed/services/v2/"
 PAGE_SIZE     = 100
 REQUEST_DELAY = 0.25  # seconds between API calls — be polite to the public server
 
 
 @dataclass
 class LabelRecord:
-    set_id:     str
-    title:      str
-    published:  str
-    source_url: str = field(default="")
+    set_id:    str
+    title:     str
+    published: str
 
 
 # ── API helpers ───────────────────────────────────────────────────────────────
@@ -74,15 +69,19 @@ def _get_json(url: str, params: dict | None = None, retries: int = 3) -> dict:
 
 
 def search_labels(drug_class: str, limit: int) -> Iterator[LabelRecord]:
-    """Paginate DailyMed SPL search results for a given pharmacological drug class."""
+    """
+    Paginate DailyMed SPL search results filtered by Established Pharmacologic
+    Class (EPC). Use drug_class_epc — not drug_class_moa — for broad therapeutic
+    classes like 'Antineoplastic Agent'.
+    """
     fetched = 0
     page = 1
 
     while fetched < limit:
         params = {
-            "drug_class_moa": drug_class,
-            "pagesize": min(PAGE_SIZE, limit - fetched),
-            "page":     page,
+            "drug_class_epc": drug_class,
+            "pagesize":       min(PAGE_SIZE, limit - fetched),
+            "page":           page,
         }
         log.info("Fetching page %d  (fetched=%d / limit=%d)", page, fetched, limit)
         data = _get_json(DAILYMED_API + "spls.json", params=params)
@@ -97,10 +96,9 @@ def search_labels(drug_class: str, limit: int) -> Iterator[LabelRecord]:
             if not set_id:
                 continue
             yield LabelRecord(
-                set_id     = set_id,
-                title      = rec.get("title", ""),
-                published  = rec.get("published_date", ""),
-                source_url = DOWNLOAD_BASE.format(set_id=set_id),
+                set_id    = set_id,
+                title     = rec.get("title", ""),
+                published = rec.get("published_date", ""),
             )
             fetched += 1
             if fetched >= limit:
@@ -110,56 +108,44 @@ def search_labels(drug_class: str, limit: int) -> Iterator[LabelRecord]:
         time.sleep(REQUEST_DELAY)
 
 
-# ── Download + extract XML ────────────────────────────────────────────────────
+# ── Download XML directly from API ───────────────────────────────────────────
 
 def download_xml(record: LabelRecord, dest_dir: Path) -> Path | None:
     """
-    Downloads the ZIP bundle for one label and extracts the SPL XML file
-    to dest_dir/<set_id>/<set_id>.xml.
+    Fetches the SPL XML document directly from the DailyMed API v2 and saves
+    it to dest_dir/<set_id>/<set_id>.xml.
 
-    Returns the path to the extracted XML, or None on failure.
+    The API endpoint GET /spls/{set_id}.xml returns the full SPL document —
+    no ZIP extraction needed.
     """
     label_dir = dest_dir / record.set_id
     label_dir.mkdir(parents=True, exist_ok=True)
 
-    # idempotent — skip if already downloaded
-    existing = list(label_dir.glob("*.xml"))
-    if existing:
+    out_path = label_dir / f"{record.set_id}.xml"
+    if out_path.exists():
         log.debug("Already present: %s", record.set_id)
-        return existing[0]
+        return out_path
 
+    url = f"{DAILYMED_API}spls/{record.set_id}.xml"
     try:
-        resp = requests.get(record.source_url, timeout=60)
+        resp = requests.get(url, timeout=60, headers={"Accept": "application/xml"})
         resp.raise_for_status()
     except requests.RequestException as exc:
         log.error("Download failed for %s: %s", record.set_id, exc)
         return None
 
-    # ZIP files always start with the magic bytes PK\x03\x04.
-    # DailyMed sometimes returns an HTML/JSON error with HTTP 200 for missing
-    # or restricted labels — catch that before attempting ZIP parse.
-    if not resp.content[:4] == b"PK\x03\x04":
-        content_type = resp.headers.get("Content-Type", "unknown")
-        preview = resp.text[:200].replace("\n", " ")
+    # Confirm we got XML, not an HTML error page
+    content_type = resp.headers.get("Content-Type", "")
+    if "xml" not in content_type and not resp.content.lstrip()[:5] == b"<?xml":
         log.warning(
-            "Skipping %s — response is not a ZIP (Content-Type: %s). Preview: %s",
-            record.set_id, content_type, preview,
+            "Skipping %s — unexpected Content-Type: %s. Preview: %s",
+            record.set_id, content_type, resp.text[:150].replace("\n", " "),
         )
         return None
 
-    try:
-        with zipfile.ZipFile(io.BytesIO(resp.content)) as zf:
-            xml_names = [n for n in zf.namelist() if n.endswith(".xml")]
-            if not xml_names:
-                log.warning("No XML in bundle for %s", record.set_id)
-                return None
-            # take the first (and usually only) XML file
-            out_path = label_dir / Path(xml_names[0]).name
-            out_path.write_bytes(zf.read(xml_names[0]))
-            return out_path
-    except zipfile.BadZipFile as exc:
-        log.error("Bad ZIP for %s: %s", record.set_id, exc)
-        return None
+    out_path.write_bytes(resp.content)
+    log.debug("Saved %s  (%d KB)", record.set_id, len(resp.content) // 1024)
+    return out_path
 
 
 # ── Unity Catalog Volume upload ───────────────────────────────────────────────
@@ -167,9 +153,7 @@ def download_xml(record: LabelRecord, dest_dir: Path) -> Path | None:
 def upload_to_volume(local_path: Path, volume_path: str, set_id: str, host: str, token: str) -> None:
     """
     Uploads a local file to a Unity Catalog Volume using the Databricks Files API.
-
-    volume_path must be an absolute /Volumes/... path (the Volume root).
-    The file is placed at: <volume_path>/<set_id>/<filename>
+    Placed at: <volume_path>/<set_id>/<filename>
     """
     dest = f"{volume_path.rstrip('/')}/{set_id}/{local_path.name}"
     url  = f"{host.rstrip('/')}/api/2.0/fs/files{dest}"
@@ -195,7 +179,7 @@ def run(
     databricks_token: str | None,
 ) -> None:
     is_volume = output_dir.startswith("/Volumes/")
-    upload    = is_volume and databricks_host and databricks_token
+    upload    = is_volume and bool(databricks_host) and bool(databricks_token)
 
     local_tmp = Path("/tmp/dailymed_xml") if is_volume else Path(output_dir)
     local_tmp.mkdir(parents=True, exist_ok=True)
@@ -240,8 +224,8 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument(
         "--drug-class",
-        default="Antineoplastic Agents",
-        help="DailyMed pharmacological drug class (default: Antineoplastic Agents)",
+        default="Antineoplastic Agent",
+        help="DailyMed Established Pharmacologic Class (EPC) to filter on (default: Antineoplastic Agent)",
     )
     parser.add_argument(
         "--output-dir",
