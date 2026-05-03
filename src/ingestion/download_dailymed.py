@@ -128,7 +128,7 @@ def download_xml(record: LabelRecord, dest_dir: Path) -> Path | None:
 
     url = f"{DAILYMED_API}spls/{record.set_id}.xml"
     try:
-        resp = requests.get(url, timeout=60, headers={"Accept": "application/xml"})
+        resp = requests.get(url, timeout=60)
         resp.raise_for_status()
     except requests.RequestException as exc:
         log.error("Download failed for %s: %s", record.set_id, exc)
