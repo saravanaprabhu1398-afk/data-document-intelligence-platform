@@ -135,6 +135,18 @@ def download_xml(record: LabelRecord, dest_dir: Path) -> Path | None:
         log.error("Download failed for %s: %s", record.set_id, exc)
         return None
 
+    # ZIP files always start with the magic bytes PK\x03\x04.
+    # DailyMed sometimes returns an HTML/JSON error with HTTP 200 for missing
+    # or restricted labels — catch that before attempting ZIP parse.
+    if not resp.content[:4] == b"PK\x03\x04":
+        content_type = resp.headers.get("Content-Type", "unknown")
+        preview = resp.text[:200].replace("\n", " ")
+        log.warning(
+            "Skipping %s — response is not a ZIP (Content-Type: %s). Preview: %s",
+            record.set_id, content_type, preview,
+        )
+        return None
+
     try:
         with zipfile.ZipFile(io.BytesIO(resp.content)) as zf:
             xml_names = [n for n in zf.namelist() if n.endswith(".xml")]
