@@ -17,14 +17,11 @@
 
 # COMMAND ----------
 
-dbutils.widgets.text("catalog",      "clinical_docs", "Catalog")
-dbutils.widgets.text("storage_root", "s3://YOUR-BUCKET/clinical-docs", "Storage root")
+dbutils.widgets.text("catalog", "clinical-lab", "Catalog")
 
-catalog      = dbutils.widgets.get("catalog")
-storage_root = dbutils.widgets.get("storage_root").rstrip("/")
+catalog = dbutils.widgets.get("catalog")
 
-print(f"catalog      : {catalog}")
-print(f"storage_root : {storage_root}")
+print(f"catalog : {catalog}")
 
 # COMMAND ----------
 
@@ -55,7 +52,6 @@ for schema, comment in [
     spark.sql(f"""
         CREATE SCHEMA IF NOT EXISTS {catalog}.{schema}
         COMMENT '{comment}'
-        MANAGED LOCATION '{storage_root}/{schema}'
     """)
     print(f"Schema ready: {catalog}.{schema}")
 

@@ -24,8 +24,7 @@ resources:
           notebook_task:
             notebook_path: ../notebooks/00_setup.py
             base_parameters:
-              catalog:      "${var.catalog}"
-              storage_root: "${var.storage_root}"
+              catalog: "${var.catalog}"
 
         - task_key: ingest_bronze
           description: "Auto Loader — read new PDFs from cloud storage and append to Bronze table."

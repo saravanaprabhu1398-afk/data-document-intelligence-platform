@@ -18,7 +18,7 @@
 
 # COMMAND ----------
 
-dbutils.widgets.text("catalog",      "clinical_docs",                                      "Catalog")
+dbutils.widgets.text("catalog",      "clinical-lab",                                       "Catalog")
 dbutils.widgets.text("source_path",  "/Volumes/clinical-lab/default/raw_clinical_pdf",     "Source path (XML files)")
 dbutils.widgets.text("checkpoint",   "/Volumes/clinical-lab/default/_checkpoints/bronze",  "Checkpoint path")
 dbutils.widgets.text("batch_id",     "",                                                    "Batch ID (leave blank to use job run_id)")
