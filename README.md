@@ -37,57 +37,61 @@ Why this dataset over alternatives:
 
 ## Architecture
 
+> **Viewing tip:** This diagram renders natively on GitHub. In VS Code, install the
+> [Markdown Preview Mermaid Support](https://marketplace.visualstudio.com/items?itemName=bierner.markdown-mermaid)
+> extension and use **Cmd+Shift+V** to open the preview.
+
 ```mermaid
 flowchart TD
-    subgraph Sources
-        A[DailyMed FTP / S3 mirror\nPDF + XML bundles]
+    subgraph SRC["Sources"]
+        A["DailyMed FTP / S3 mirror\nPDF + XML bundles"]
     end
 
-    subgraph Bronze["Phase 1 — Bronze (Raw Ingestion)"]
-        B[Cloud Storage\nraw PDFs + XML]
-        C[Auto Loader\nfileNotifications mode]
-        D[(Bronze Delta Table\npath · raw_bytes · ingest_ts · source_url)]
+    subgraph BRZ["Phase 1 - Bronze: Raw Ingestion"]
+        B["Cloud Storage\nraw PDFs + XML"]
+        C["Auto Loader\nfileNotifications mode"]
+        D[("Bronze Delta Table\npath, raw_bytes, ingest_ts, source_url")]
     end
 
-    subgraph Silver["Phase 2 — Silver (AI Extraction)"]
-        E[ai_parse_document\nPDF → text + layout]
-        F[ai_query\nstructured-output extraction]
-        G[(Silver Delta Table\ndrug_name · indication · dosage\nadverse_events · interactions\nextracted_at · confidence_score)]
-        H[(Quarantine Table\nfailed rows + error reason)]
+    subgraph SLV["Phase 2 - Silver: AI Extraction"]
+        E["ai_parse_document\nPDF to text + layout"]
+        F["ai_query\nstructured-output extraction"]
+        G[("Silver Delta Table\ndrug_name, indication, dosage\nadverse_events, interactions\nconfidence_score")]
+        H[("Quarantine Table\nfailed rows + error reason")]
     end
 
-    subgraph Gold["Phase 3 — Gold (Analytics + Vector)"]
-        I[(Gold: dim_drug\nnormalized drug entities)]
-        J[(Gold: fact_adverse_events\ngrain: drug × event × label_version)]
-        K[(Gold: fact_dosage\ngrain: drug × route × population)]
-        L[Databricks Vector Search\nchunked embeddings\nwith doc metadata]
+    subgraph GLD["Phase 3 - Gold: Analytics + Vector"]
+        I[("dim_drug\nnormalized drug entities")]
+        J[("fact_adverse_events\ngrain: drug + event + label_version")]
+        K[("fact_dosage\ngrain: drug + route + population")]
+        L["Databricks Vector Search\nchunked embeddings + doc metadata"]
     end
 
-    subgraph Agent["Phase 4 — Agent Layer"]
-        M[RAG Agent\nAgent Bricks / LangGraph]
-        N[Tool: SQL over Gold tables\nstructured lookups]
-        O[Tool: Vector Search\ndocument retrieval]
-        P[Genie Space / Streamlit\nchat UI with citations]
+    subgraph AGT["Phase 4 - Agent Layer"]
+        N["Tool: SQL lookup\nGold tables"]
+        O["Tool: Vector Search\ndocument retrieval"]
+        M["RAG Agent\nAgent Bricks / LangGraph"]
+        P["Genie Space / Streamlit\nchat UI with citations"]
     end
 
-    subgraph Trust["Phase 5 — Trust Layer"]
-        Q[DLT Expectations\nschema + business rules]
-        R[Freshness SLA Alerts\nDatabricks Jobs alerts]
-        S[Cost Dashboard\nsystem tables · per-pipeline DBU]
-        T[Data Contracts\nschema · semantics · owner · SLA]
+    subgraph TRU["Phase 5 - Trust Layer"]
+        Q["DLT Expectations\nschema + business rules"]
+        R["Freshness SLA Alerts"]
+        S["Cost Dashboard\nper-pipeline DBU spend"]
+        T["Data Contracts\nschema, semantics, owner, SLA"]
     end
 
-    A -->|download + land| B
+    A -->|"download + land"| B
     B --> C
-    C -->|schema inference + evolution| D
+    C -->|"schema inference + evolution"| D
     D --> E
     E --> F
-    F -->|passes expectations| G
-    F -->|fails expectations| H
+    F -->|"passes validation"| G
+    F -->|"fails validation"| H
     G --> I
     G --> J
     G --> K
-    G -->|chunk + embed| L
+    G -->|"chunk + embed"| L
     I --> N
     J --> N
     K --> N
@@ -96,14 +100,14 @@ flowchart TD
     O --> M
     M --> P
 
-    D -.->|monitored by| Q
-    G -.->|monitored by| Q
+    D -. "monitored by" .-> Q
+    G -. "monitored by" .-> Q
     Q -.-> R
-    D -.->|billed to| S
-    G -.->|billed to| S
-    I -.->|governed by| T
-    J -.->|governed by| T
-    K -.->|governed by| T
+    D -. "billed to" .-> S
+    G -. "billed to" .-> S
+    I -. "governed by" .-> T
+    J -. "governed by" .-> T
+    K -. "governed by" .-> T
 ```
 
 ---
