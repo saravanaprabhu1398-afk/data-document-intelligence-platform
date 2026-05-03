@@ -68,13 +68,14 @@ for schema, comment in [
 
 spark.sql(f"""
     CREATE TABLE IF NOT EXISTS {catalog}.bronze.drug_label_raw (
-        file_path           STRING  NOT NULL  COMMENT 'Full cloud storage path of the source file',
-        file_name           STRING            COMMENT 'Basename of the file (e.g. "label_abc123.pdf")',
+        file_path           STRING  NOT NULL  COMMENT 'Full Volume path of the source file',
+        file_name           STRING            COMMENT 'Basename of the file (e.g. "a1b2c3.xml")',
+        file_type           STRING            COMMENT 'Source file format: xml | pdf',
         source_url          STRING            COMMENT 'DailyMed download URL the file originated from',
-        set_id              STRING            COMMENT 'SPL set identifier extracted from the file path or XML companion',
+        set_id              STRING            COMMENT 'SPL set identifier extracted from the file path',
         raw_bytes           BINARY            COMMENT 'Raw file contents — never modify, only append',
         file_size_bytes     BIGINT            COMMENT 'File size in bytes',
-        file_modified_time  TIMESTAMP         COMMENT 'Last-modified timestamp reported by cloud storage',
+        file_modified_time  TIMESTAMP         COMMENT 'Last-modified timestamp reported by the Volume',
         ingest_timestamp    TIMESTAMP         COMMENT 'Time this row was written to the Bronze table',
         source_batch_id     STRING            COMMENT 'Lakeflow Job run_id that produced this row',
         _rescued_data       STRING            COMMENT 'Auto Loader rescue column — captures unexpected schema fields'

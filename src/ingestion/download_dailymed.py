@@ -1,14 +1,22 @@
 """
-Download a curated oncology slice of FDA drug labels from DailyMed.
+Download a curated oncology slice of FDA drug labels from DailyMed
+and land the XML (SPL) files in a Unity Catalog Volume.
 
-Usage (local → directory):
+Each DailyMed ZIP bundle contains one XML file (the SPL document) plus
+optional images. This script extracts only the XML and uploads it to
+the target Volume path, preserving the set_id directory structure:
+
+    /Volumes/<catalog>/<schema>/<volume>/<set_id>/<set_id>.xml
+
+Usage — land locally (for inspection):
     python download_dailymed.py --output-dir ./data/sample --limit 50
 
-Usage (upload directly to S3):
-    python download_dailymed.py \
-        --output-dir s3://YOUR-BUCKET/clinical-docs/raw/pdfs \
-        --limit 5000 \
-        --drug-class "Antineoplastic Agents"
+Usage — upload directly to a UC Volume via Databricks Files API:
+    python download_dailymed.py \\
+        --output-dir /Volumes/clinical-lab/default/raw_clinical_pdf \\
+        --limit 5000 \\
+        --databricks-host https://your-workspace.azuredatabricks.net \\
+        --databricks-token dapi...
 
 DailyMed API docs: https://dailymed.nlm.nih.gov/dailymed/app-support-web-services.cfm
 """
@@ -24,7 +32,6 @@ import zipfile
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Iterator
-from urllib.parse import urljoin, urlencode
 
 import requests
 
@@ -35,19 +42,18 @@ logging.basicConfig(
 )
 log = logging.getLogger(__name__)
 
-DAILYMED_API   = "https://dailymed.nlm.nih.gov/dailymed/services/v2/"
-DOWNLOAD_BASE  = "https://dailymed.nlm.nih.gov/dailymed/services/v2/spls/"
-PAGE_SIZE      = 100
-REQUEST_DELAY  = 0.25   # seconds between API calls — be polite to the public server
+DAILYMED_API  = "https://dailymed.nlm.nih.gov/dailymed/services/v2/"
+DOWNLOAD_BASE = "https://dailymed.nlm.nih.gov/dailymed/services/v2/spls/"
+PAGE_SIZE     = 100
+REQUEST_DELAY = 0.25  # seconds between API calls — be polite to the public server
 
 
 @dataclass
 class LabelRecord:
-    set_id:       str
-    title:        str
-    published:    str
-    pdf_url:      str = field(default="")
-    source_url:   str = field(default="")
+    set_id:     str
+    title:      str
+    published:  str
+    source_url: str = field(default="")
 
 
 # ── API helpers ───────────────────────────────────────────────────────────────
@@ -68,10 +74,7 @@ def _get_json(url: str, params: dict | None = None, retries: int = 3) -> dict:
 
 
 def search_labels(drug_class: str, limit: int) -> Iterator[LabelRecord]:
-    """
-    Paginate DailyMed SPL search results for a given pharmacological drug class.
-    Yields LabelRecord objects up to `limit`.
-    """
+    """Paginate DailyMed SPL search results for a given pharmacological drug class."""
     fetched = 0
     page = 1
 
@@ -82,7 +85,7 @@ def search_labels(drug_class: str, limit: int) -> Iterator[LabelRecord]:
             "page":     page,
         }
         log.info("Fetching page %d  (fetched=%d / limit=%d)", page, fetched, limit)
-        data = _get_json(urljoin(DAILYMED_API, "spls.json"), params=params)
+        data = _get_json(DAILYMED_API + "spls.json", params=params)
 
         records = data.get("data", [])
         if not records:
@@ -107,124 +110,156 @@ def search_labels(drug_class: str, limit: int) -> Iterator[LabelRecord]:
         time.sleep(REQUEST_DELAY)
 
 
-# ── Download + extract ────────────────────────────────────────────────────────
+# ── Download + extract XML ────────────────────────────────────────────────────
 
-def download_and_extract(record: LabelRecord, dest_dir: Path) -> list[Path]:
+def download_xml(record: LabelRecord, dest_dir: Path) -> Path | None:
     """
-    Downloads the ZIP bundle for a label, extracts the PDF (and XML companion),
-    and saves them under dest_dir/<set_id>/.
+    Downloads the ZIP bundle for one label and extracts the SPL XML file
+    to dest_dir/<set_id>/<set_id>.xml.
 
-    Returns list of extracted file paths.
+    Returns the path to the extracted XML, or None on failure.
     """
     label_dir = dest_dir / record.set_id
     label_dir.mkdir(parents=True, exist_ok=True)
 
-    existing_pdfs = list(label_dir.glob("*.pdf"))
-    if existing_pdfs:
-        log.debug("Already downloaded %s, skipping.", record.set_id)
-        return existing_pdfs
+    # idempotent — skip if already downloaded
+    existing = list(label_dir.glob("*.xml"))
+    if existing:
+        log.debug("Already present: %s", record.set_id)
+        return existing[0]
 
     try:
-        resp = requests.get(record.source_url, timeout=60, stream=True)
+        resp = requests.get(record.source_url, timeout=60)
         resp.raise_for_status()
     except requests.RequestException as exc:
-        log.error("Failed to download %s: %s", record.set_id, exc)
-        return []
+        log.error("Download failed for %s: %s", record.set_id, exc)
+        return None
 
-    extracted: list[Path] = []
     try:
         with zipfile.ZipFile(io.BytesIO(resp.content)) as zf:
-            for name in zf.namelist():
-                if name.endswith((".pdf", ".xml")):
-                    out_path = label_dir / Path(name).name
-                    out_path.write_bytes(zf.read(name))
-                    extracted.append(out_path)
+            xml_names = [n for n in zf.namelist() if n.endswith(".xml")]
+            if not xml_names:
+                log.warning("No XML in bundle for %s", record.set_id)
+                return None
+            # take the first (and usually only) XML file
+            out_path = label_dir / Path(xml_names[0]).name
+            out_path.write_bytes(zf.read(xml_names[0]))
+            return out_path
     except zipfile.BadZipFile as exc:
         log.error("Bad ZIP for %s: %s", record.set_id, exc)
+        return None
 
-    return extracted
 
+# ── Unity Catalog Volume upload ───────────────────────────────────────────────
 
-def upload_to_s3(local_path: Path, s3_prefix: str, set_id: str) -> str:
+def upload_to_volume(local_path: Path, volume_path: str, set_id: str, host: str, token: str) -> None:
     """
-    Uploads a local file to S3 under s3_prefix/<set_id>/<filename>.
-    Requires boto3 and AWS credentials in the environment.
-    Returns the S3 URI of the uploaded object.
+    Uploads a local file to a Unity Catalog Volume using the Databricks Files API.
+
+    volume_path must be an absolute /Volumes/... path (the Volume root).
+    The file is placed at: <volume_path>/<set_id>/<filename>
     """
-    try:
-        import boto3
-    except ImportError:
-        raise ImportError("boto3 is required for S3 uploads: pip install boto3")
+    dest = f"{volume_path.rstrip('/')}/{set_id}/{local_path.name}"
+    url  = f"{host.rstrip('/')}/api/2.0/fs/files{dest}"
 
-    bucket, *key_parts = s3_prefix.removeprefix("s3://").split("/")
-    key = "/".join(key_parts + [set_id, local_path.name])
-
-    s3 = boto3.client("s3")
-    s3.upload_file(str(local_path), bucket, key)
-    uri = f"s3://{bucket}/{key}"
-    log.debug("Uploaded %s → %s", local_path.name, uri)
-    return uri
+    with open(local_path, "rb") as f:
+        resp = requests.put(
+            url,
+            headers={"Authorization": f"Bearer {token}"},
+            data=f,
+            timeout=120,
+        )
+    resp.raise_for_status()
+    log.debug("Uploaded %s → %s", local_path.name, dest)
 
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 
-def run(drug_class: str, output_dir: str, limit: int) -> None:
-    is_s3 = output_dir.startswith("s3://")
-    local_tmp = Path("/tmp/dailymed_download") if is_s3 else Path(output_dir)
+def run(
+    drug_class:       str,
+    output_dir:       str,
+    limit:            int,
+    databricks_host:  str | None,
+    databricks_token: str | None,
+) -> None:
+    is_volume = output_dir.startswith("/Volumes/")
+    upload    = is_volume and databricks_host and databricks_token
+
+    local_tmp = Path("/tmp/dailymed_xml") if upload else Path(output_dir)
     local_tmp.mkdir(parents=True, exist_ok=True)
 
-    downloaded = skipped = failed = 0
+    if is_volume and not upload:
+        log.warning(
+            "output-dir is a Volume path but --databricks-host / --databricks-token "
+            "were not provided. Files will be saved locally to /tmp/dailymed_xml instead. "
+            "Then run: databricks fs cp --recursive /tmp/dailymed_xml %s",
+            output_dir,
+        )
+
+    downloaded = failed = 0
 
     for record in search_labels(drug_class, limit):
-        files = download_and_extract(record, local_tmp)
+        xml_path = download_xml(record, local_tmp)
 
-        if not files:
+        if xml_path is None:
             failed += 1
             continue
 
-        pdfs = [f for f in files if f.suffix == ".pdf"]
-        if not pdfs:
-            failed += 1
-            log.warning("No PDF found in bundle for %s", record.set_id)
-            continue
-
-        if is_s3:
-            for f in files:
-                upload_to_s3(f, output_dir, record.set_id)
-            skipped += 1 if not pdfs else 0
-        else:
-            skipped += 0
+        if upload:
+            try:
+                upload_to_volume(xml_path, output_dir, record.set_id, databricks_host, databricks_token)
+            except requests.RequestException as exc:
+                log.error("Volume upload failed for %s: %s", record.set_id, exc)
+                failed += 1
+                continue
 
         downloaded += 1
         time.sleep(REQUEST_DELAY)
 
     log.info(
-        "Done. downloaded=%d  failed=%d  total_attempted=%d",
+        "Done.  downloaded=%d  failed=%d  total_attempted=%d",
         downloaded, failed, downloaded + failed,
     )
-    log.info("Files saved to: %s", output_dir)
+    dest = output_dir if upload else str(local_tmp)
+    log.info("Files at: %s", dest)
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description=__doc__)
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument(
         "--drug-class",
         default="Antineoplastic Agents",
-        help="DailyMed pharmacological drug class to filter on (default: Antineoplastic Agents)",
+        help="DailyMed pharmacological drug class (default: Antineoplastic Agents)",
     )
     parser.add_argument(
         "--output-dir",
         default="./data/sample",
-        help="Local directory or S3 prefix (s3://bucket/prefix) to save files",
+        help="Local directory or /Volumes/... path to write XML files",
     )
     parser.add_argument(
         "--limit",
         type=int,
         default=50,
-        help="Maximum number of labels to download (default: 50 for local dev, 5000 for full run)",
+        help="Max labels to download (default: 50 for dev, 5000 for full oncology slice)",
+    )
+    parser.add_argument(
+        "--databricks-host",
+        default=os.getenv("DATABRICKS_HOST"),
+        help="Databricks workspace URL (or set DATABRICKS_HOST env var)",
+    )
+    parser.add_argument(
+        "--databricks-token",
+        default=os.getenv("DATABRICKS_TOKEN"),
+        help="Databricks PAT (or set DATABRICKS_TOKEN env var)",
     )
     args = parser.parse_args()
-    run(drug_class=args.drug_class, output_dir=args.output_dir, limit=args.limit)
+    run(
+        drug_class       = args.drug_class,
+        output_dir       = args.output_dir,
+        limit            = args.limit,
+        databricks_host  = args.databricks_host,
+        databricks_token = args.databricks_token,
+    )
 
 
 if __name__ == "__main__":
