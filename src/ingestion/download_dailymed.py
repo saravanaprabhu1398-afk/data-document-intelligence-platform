@@ -185,7 +185,7 @@ def run(
     is_volume = output_dir.startswith("/Volumes/")
     upload    = is_volume and databricks_host and databricks_token
 
-    local_tmp = Path("/tmp/dailymed_xml") if upload else Path(output_dir)
+    local_tmp = Path("/tmp/dailymed_xml") if is_volume else Path(output_dir)
     local_tmp.mkdir(parents=True, exist_ok=True)
 
     if is_volume and not upload:
