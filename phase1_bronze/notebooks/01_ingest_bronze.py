@@ -59,7 +59,7 @@ raw_df = (
     .format("cloudFiles")
     .option("cloudFiles.format",              "binaryFile")
     .option("cloudFiles.schemaLocation",      checkpoint + "/schema")
-    .option("cloudFiles.schemaEvolutionMode", "addNewColumns")
+    .option("cloudFiles.schemaEvolutionMode", "none")
     .option("cloudFiles.includeExistingFiles", "true")
     .option("pathGlobFilter",                 "*.xml")
     .option("recursiveFileLookup",            "true")
