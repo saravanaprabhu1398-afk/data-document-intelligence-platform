@@ -38,7 +38,7 @@ resources:
           description: "Create catalog, schemas, and tables if they do not exist."
           job_cluster_key: ingestion_cluster
           notebook_task:
-            notebook_path: ../notebooks/00_setup
+            notebook_path: ../notebooks/00_setup.py
             base_parameters:
               catalog:      "${var.catalog}"
               storage_root: "${var.storage_root}"
@@ -49,7 +49,7 @@ resources:
             - task_key: setup
           job_cluster_key: ingestion_cluster
           notebook_task:
-            notebook_path: ../notebooks/01_ingest_bronze
+            notebook_path: ../notebooks/01_ingest_bronze.py
             base_parameters:
               catalog:     "${var.catalog}"
               source_path: "${var.storage_root}/raw/pdfs"
