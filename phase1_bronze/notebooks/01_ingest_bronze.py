@@ -117,7 +117,7 @@ bronze_df = (
 
 # COMMAND ----------
 
-(
+query = (
     bronze_df.writeStream
     .format("delta")
     .outputMode("append")
@@ -127,6 +127,10 @@ bronze_df = (
     .trigger(availableNow=True)
     .toTable(f"{cat}.bronze.drug_label_raw")
 )
+
+# Block until the stream finishes — without this the cell returns immediately
+# and subsequent metric cells see an empty table
+query.awaitTermination()
 
 # COMMAND ----------
 
