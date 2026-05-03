@@ -7,8 +7,16 @@ variables:
     default: clinical_docs
 
   storage_root:
-    description: Root cloud storage path for all raw files (e.g. s3://your-bucket/clinical-docs or abfss://container@account.dfs.core.windows.net/clinical-docs)
+    description: Cloud storage path used for schema managed locations and Auto Loader checkpoints (e.g. s3://your-bucket/clinical-docs)
     default: s3://YOUR-BUCKET/clinical-docs
+
+  source_path:
+    description: Unity Catalog Volume path where raw PDFs are landed before ingestion
+    default: /Volumes/clinical-lab/default/raw_clinical_pdf
+
+  checkpoint_path:
+    description: Path for Auto Loader checkpoint state (Volume or cloud storage)
+    default: /Volumes/clinical-lab/default/_checkpoints/bronze
 
   alert_email:
     description: Email address for job failure alerts

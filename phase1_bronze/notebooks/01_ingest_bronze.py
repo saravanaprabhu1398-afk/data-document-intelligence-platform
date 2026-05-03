@@ -18,8 +18,8 @@
 # COMMAND ----------
 
 dbutils.widgets.text("catalog",       "clinical_docs",                    "Catalog")
-dbutils.widgets.text("source_path",   "s3://YOUR-BUCKET/clinical-docs/raw/pdfs", "Source path (PDFs)")
-dbutils.widgets.text("checkpoint",    "s3://YOUR-BUCKET/clinical-docs/_checkpoints/bronze", "Checkpoint path")
+dbutils.widgets.text("source_path",   "/Volumes/clinical-lab/default/raw_clinical_pdf", "Source path (PDFs)")
+dbutils.widgets.text("checkpoint",    "/Volumes/clinical-lab/default/_checkpoints/bronze", "Checkpoint path")
 dbutils.widgets.text("batch_id",      "",                                  "Batch ID (leave blank to use job run_id)")
 
 catalog      = dbutils.widgets.get("catalog")

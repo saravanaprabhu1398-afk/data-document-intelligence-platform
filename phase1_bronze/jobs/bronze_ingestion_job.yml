@@ -52,8 +52,8 @@ resources:
             notebook_path: ../notebooks/01_ingest_bronze.py
             base_parameters:
               catalog:     "${var.catalog}"
-              source_path: "${var.storage_root}/raw/pdfs"
-              checkpoint:  "${var.storage_root}/_checkpoints/bronze"
+              source_path: "${var.source_path}"
+              checkpoint:  "${var.checkpoint_path}"
               # batch_id left blank — notebook reads it from the Lakeflow run context
 
       # ── Health checks ─────────────────────────────────────────────────────
