@@ -174,7 +174,7 @@ data-document-intelligence-platform/
 | Phase | Scope | Status |
 |---|---|---|
 | 0 — Setup | Repo, architecture, dataset | **Done** |
-| 1 — Bronze | Auto Loader ingestion | Not started |
+| 1 — Bronze | Auto Loader ingestion | **Done** |
 | 2 — Silver | AI extraction + quarantine | Not started |
 | 3 — Gold | Analytics tables + vector index | Not started |
 | 4 — Agent | RAG agent + chat UI | Not started |
