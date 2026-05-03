@@ -23,12 +23,22 @@ dbutils.widgets.text("source_path",  "/Volumes/clinical-lab/default/raw_clinical
 dbutils.widgets.text("checkpoint",   "/Volumes/clinical-lab/default/_checkpoints/bronze",  "Checkpoint path")
 dbutils.widgets.text("batch_id",     "",                                                    "Batch ID (leave blank to use job run_id)")
 
+from datetime import datetime
+
 catalog     = dbutils.widgets.get("catalog")
 # Backtick-quoted for use in SQL — required when the catalog name contains hyphens
 cat         = f"`{catalog}`"
 source_path = dbutils.widgets.get("source_path").rstrip("/")
 checkpoint  = dbutils.widgets.get("checkpoint").rstrip("/")
-batch_id    = dbutils.widgets.get("batch_id") or dbutils.notebook.entry_point.getDbutils().notebook().getContext().currentRunId().get()
+
+def _resolve_batch_id() -> str:
+    # currentRunId() is only available when running as a Databricks Job
+    try:
+        return dbutils.notebook.entry_point.getDbutils().notebook().getContext().currentRunId().get()
+    except Exception:
+        return f"interactive_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+
+batch_id = dbutils.widgets.get("batch_id") or _resolve_batch_id()
 
 print(f"catalog      : {catalog}")
 print(f"source_path  : {source_path}")
