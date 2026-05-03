@@ -17,26 +17,10 @@ resources:
           - ${var.alert_email}
         no_alert_for_skipped_runs: true
 
-      # ── Shared cluster ────────────────────────────────────────────────────
-      job_clusters:
-        - job_cluster_key: ingestion_cluster
-          new_cluster:
-            spark_version: "15.4.x-scala2.12"   # Databricks Runtime 15.4 LTS
-            node_type_id: "m5d.large"            # 2 cores, 8 GB — sufficient for binary file reads
-            autoscale:
-              min_workers: 1
-              max_workers: 4
-            spark_conf:
-              "spark.databricks.delta.optimizeWrite.enabled": "true"
-              "spark.databricks.delta.autoCompact.enabled":   "true"
-            data_security_mode: "SINGLE_USER"
-            runtime_engine: "PHOTON"
-
       # ── Tasks ─────────────────────────────────────────────────────────────
       tasks:
         - task_key: setup
           description: "Create catalog, schemas, and tables if they do not exist."
-          job_cluster_key: ingestion_cluster
           notebook_task:
             notebook_path: ../notebooks/00_setup.py
             base_parameters:
@@ -47,7 +31,6 @@ resources:
           description: "Auto Loader — read new PDFs from cloud storage and append to Bronze table."
           depends_on:
             - task_key: setup
-          job_cluster_key: ingestion_cluster
           notebook_task:
             notebook_path: ../notebooks/01_ingest_bronze.py
             base_parameters:

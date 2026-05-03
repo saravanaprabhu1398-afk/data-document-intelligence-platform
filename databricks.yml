@@ -20,7 +20,7 @@ variables:
 
   alert_email:
     description: Email address for job failure alerts
-    default: your-email@example.com
+    default: info@datafortis.in
 
   env:
     description: Deployment environment
