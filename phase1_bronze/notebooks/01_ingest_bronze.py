@@ -24,6 +24,8 @@ dbutils.widgets.text("checkpoint",   "/Volumes/clinical-lab/default/_checkpoints
 dbutils.widgets.text("batch_id",     "",                                                    "Batch ID (leave blank to use job run_id)")
 
 catalog     = dbutils.widgets.get("catalog")
+# Backtick-quoted for use in SQL — required when the catalog name contains hyphens
+cat         = f"`{catalog}`"
 source_path = dbutils.widgets.get("source_path").rstrip("/")
 checkpoint  = dbutils.widgets.get("checkpoint").rstrip("/")
 batch_id    = dbutils.widgets.get("batch_id") or dbutils.notebook.entry_point.getDbutils().notebook().getContext().currentRunId().get()
@@ -113,7 +115,7 @@ bronze_df = (
     .option("mergeSchema",        "true")
     # availableNow processes all pending files then terminates — ideal for scheduled jobs
     .trigger(availableNow=True)
-    .toTable(f"{catalog}.bronze.drug_label_raw")
+    .toTable(f"{cat}.bronze.drug_label_raw")
 )
 
 # COMMAND ----------
@@ -132,7 +134,7 @@ summary = spark.sql(f"""
         COUNT(DISTINCT set_id)              AS unique_labels,
         MIN(ingest_timestamp)               AS first_file,
         MAX(ingest_timestamp)               AS last_file
-    FROM {catalog}.bronze.drug_label_raw
+    FROM {cat}.bronze.drug_label_raw
     WHERE source_batch_id = '{batch_id}'
     GROUP BY source_batch_id, file_type
 """)
@@ -153,7 +155,7 @@ display(spark.sql(f"""
         COUNT(*)                            AS files,
         ROUND(SUM(file_size_bytes)/1e6, 1)  AS total_mb,
         COUNT(DISTINCT set_id)              AS unique_labels
-    FROM {catalog}.bronze.drug_label_raw
+    FROM {cat}.bronze.drug_label_raw
     GROUP BY ingest_date, file_type
     ORDER BY ingest_date DESC
 """))

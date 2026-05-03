@@ -3,7 +3,7 @@
 # MAGIC # Phase 1 — Bronze Setup
 # MAGIC
 # MAGIC Creates the Unity Catalog objects needed before ingestion runs:
-# MAGIC - Catalog `clinical_docs`
+# MAGIC - Catalog `clinical-lab`
 # MAGIC - Schema `bronze`
 # MAGIC - Bronze Delta table `drug_label_raw`
 # MAGIC - Schema `silver` (placeholder so Silver notebooks can run later)
@@ -20,6 +20,8 @@
 dbutils.widgets.text("catalog", "clinical-lab", "Catalog")
 
 catalog = dbutils.widgets.get("catalog")
+# Backtick-quoted for use in SQL — required when the catalog name contains hyphens
+cat = f"`{catalog}`"
 
 print(f"catalog : {catalog}")
 
@@ -31,11 +33,11 @@ print(f"catalog : {catalog}")
 # COMMAND ----------
 
 spark.sql(f"""
-    CREATE CATALOG IF NOT EXISTS {catalog}
+    CREATE CATALOG IF NOT EXISTS {cat}
     COMMENT 'Clinical Document Intelligence Platform — all layers'
 """)
 
-spark.sql(f"USE CATALOG {catalog}")
+spark.sql(f"USE CATALOG {cat}")
 
 # COMMAND ----------
 
@@ -50,7 +52,7 @@ for schema, comment in [
     ("gold",   "Curated analytics tables and vector search metadata"),
 ]:
     spark.sql(f"""
-        CREATE SCHEMA IF NOT EXISTS {catalog}.{schema}
+        CREATE SCHEMA IF NOT EXISTS {cat}.`{schema}`
         COMMENT '{comment}'
     """)
     print(f"Schema ready: {catalog}.{schema}")
@@ -63,7 +65,7 @@ for schema, comment in [
 # COMMAND ----------
 
 spark.sql(f"""
-    CREATE TABLE IF NOT EXISTS {catalog}.bronze.drug_label_raw (
+    CREATE TABLE IF NOT EXISTS {cat}.bronze.drug_label_raw (
         file_path           STRING  NOT NULL  COMMENT 'Full Volume path of the source file',
         file_name           STRING            COMMENT 'Basename of the file (e.g. "a1b2c3.xml")',
         file_type           STRING            COMMENT 'Source file format: xml | pdf',
@@ -103,7 +105,7 @@ print(f"Table ready: {catalog}.bronze.drug_label_raw")
 # COMMAND ----------
 
 spark.sql(f"""
-    CREATE TABLE IF NOT EXISTS {catalog}.silver.drug_label_quarantine (
+    CREATE TABLE IF NOT EXISTS {cat}.silver.drug_label_quarantine (
         file_path        STRING     COMMENT 'Source file path from Bronze',
         source_batch_id  STRING     COMMENT 'Batch that attempted extraction',
         failure_stage    STRING     COMMENT 'parse_error | schema_violation | low_confidence',
@@ -129,5 +131,5 @@ print(f"Table ready: {catalog}.silver.drug_label_quarantine")
 
 # COMMAND ----------
 
-display(spark.sql(f"SHOW TABLES IN {catalog}.bronze"))
-display(spark.sql(f"SHOW TABLES IN {catalog}.silver"))
+display(spark.sql(f"SHOW TABLES IN {cat}.bronze"))
+display(spark.sql(f"SHOW TABLES IN {cat}.silver"))
