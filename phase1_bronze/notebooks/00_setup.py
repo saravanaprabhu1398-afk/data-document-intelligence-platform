@@ -82,7 +82,6 @@ spark.sql(f"""
     COMMENT 'Bronze layer: raw FDA drug label files landed from DailyMed. One row per file per ingestion.'
     TBLPROPERTIES (
         'quality'                              = 'bronze',
-        'owner'                                = 'data-engineering',
         'sla_freshness_hours'                  = '24',
         'pii'                                  = 'false',
         'delta.autoOptimize.optimizeWrite'     = 'true',
@@ -117,7 +116,6 @@ spark.sql(f"""
     COMMENT 'Silver quarantine: rows that failed AI extraction — review and reprocess manually.'
     TBLPROPERTIES (
         'quality'  = 'quarantine',
-        'owner'    = 'ai-platform',
         'pii'      = 'false'
     )
 """)

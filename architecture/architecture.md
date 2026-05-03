@@ -57,8 +57,7 @@ CREATE TABLE bronze.drug_label_raw (
 USING DELTA
 TBLPROPERTIES (
   'delta.autoOptimize.optimizeWrite' = 'true',
-  'quality' = 'bronze',
-  'owner'   = 'data-engineering'
+  'quality' = 'bronze'
 );
 ```
 
