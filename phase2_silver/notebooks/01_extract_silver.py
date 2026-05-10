@@ -222,12 +222,12 @@ extracted_df = spark.sql(f"""
 # Materialise ai_query results to a scratch Delta table immediately. Without
 # this, the downstream good/bad filters would each re-execute ai_query and
 # double the LLM cost. (Cannot use .cache() on serverless compute.)
-scratch_suffix = batch_id.replace('-', '_').replace(':', '_').replace('.', '_')
-scratch_table  = f"{catalog}.silver._scratch_extraction_{scratch_suffix}"
-scratch_ref    = f"{cat}.silver.`_scratch_extraction_{scratch_suffix}`"
+scratch_suffix    = batch_id.replace('-', '_').replace(':', '_').replace('.', '_')
+scratch_ref       = f"{cat}.silver.`_scratch_extraction_{scratch_suffix}`"   # for SQL FROM clauses
+scratch_label     = f"{catalog}.silver._scratch_extraction_{scratch_suffix}"  # for human-readable logs
 
-extracted_df.write.mode("overwrite").saveAsTable(scratch_table)
-print(f"ai_query completed; results materialised to {scratch_table}")
+extracted_df.write.mode("overwrite").saveAsTable(scratch_ref)
+print(f"ai_query completed; results materialised to {scratch_label}")
 
 # COMMAND ----------
 
@@ -366,7 +366,7 @@ if bad_count > 0:
 # COMMAND ----------
 
 spark.sql(f"DROP TABLE IF EXISTS {scratch_ref}")
-print(f"Dropped {scratch_table}")
+print(f"Dropped {scratch_label}")
 
 # COMMAND ----------
 
