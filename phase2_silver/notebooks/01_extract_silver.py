@@ -219,8 +219,15 @@ extracted_df = spark.sql(f"""
     FROM rows_to_extract
 """)
 
-extracted_df.createOrReplaceTempView("extracted_raw")
-print(f"ai_query completed for {extracted_df.count()} rows")
+# Materialise ai_query results to a scratch Delta table immediately. Without
+# this, the downstream good/bad filters would each re-execute ai_query and
+# double the LLM cost. (Cannot use .cache() on serverless compute.)
+scratch_suffix = batch_id.replace('-', '_').replace(':', '_').replace('.', '_')
+scratch_table  = f"{catalog}.silver._scratch_extraction_{scratch_suffix}"
+scratch_ref    = f"{cat}.silver.`_scratch_extraction_{scratch_suffix}`"
+
+extracted_df.write.mode("overwrite").saveAsTable(scratch_table)
+print(f"ai_query completed; results materialised to {scratch_table}")
 
 # COMMAND ----------
 
@@ -257,7 +264,7 @@ scored_df = spark.sql(f"""
                     mechanism_of_action: string
                 >'
             ) AS x
-        FROM extracted_raw
+        FROM {scratch_ref}
     )
     SELECT
         file_path,
@@ -279,8 +286,7 @@ scored_df = spark.sql(f"""
     FROM parsed
 """)
 
-scored_df.cache()
-print(f"Scored rows: {scored_df.count()}  (cached)")
+print(f"Scored rows: {scored_df.count()}")
 
 # COMMAND ----------
 
@@ -355,7 +361,17 @@ if bad_count > 0:
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## 8. Run summary
+# MAGIC ## 8. Drop the scratch table
+
+# COMMAND ----------
+
+spark.sql(f"DROP TABLE IF EXISTS {scratch_ref}")
+print(f"Dropped {scratch_table}")
+
+# COMMAND ----------
+
+# MAGIC %md
+# MAGIC ## 9. Run summary
 
 # COMMAND ----------
 
@@ -372,7 +388,7 @@ display(spark.sql(f"""
 # COMMAND ----------
 
 # MAGIC %md
-# MAGIC ## 9. Spot-check the output
+# MAGIC ## 10. Spot-check the output
 
 # COMMAND ----------
 
