@@ -1,0 +1,54 @@
+resources:
+  jobs:
+    gold_build:
+      name: "clinical-docs-gold-build-${var.env}"
+      description: "Builds the Gold dimension/fact tables and refreshes the chunks table feeding Vector Search."
+
+      # Runs daily at 04:00 UTC (after Bronze 02:00 + Silver 03:00).
+      schedule:
+        quartz_cron_expression: "0 0 4 * * ?"
+        timezone_id: "UTC"
+        pause_status: UNPAUSED
+
+      email_notifications:
+        on_failure:
+          - ${var.alert_email}
+        no_alert_for_skipped_runs: true
+
+      tasks:
+        - task_key: setup_gold
+          description: "Create Gold tables if they do not exist."
+          notebook_task:
+            notebook_path: ../notebooks/00_setup_gold.py
+            base_parameters:
+              catalog: "${var.catalog}"
+
+        - task_key: build_gold
+          description: "Refresh dim_drug and fact_adverse_events from Silver."
+          depends_on:
+            - task_key: setup_gold
+          notebook_task:
+            notebook_path: ../notebooks/01_build_gold.py
+            base_parameters:
+              catalog: "${var.catalog}"
+
+        - task_key: chunk_text
+          description: "Chunk SPL text into gold.drug_label_chunks for Vector Search."
+          depends_on:
+            - task_key: build_gold
+          notebook_task:
+            notebook_path: ../notebooks/02_chunk_text.py
+            base_parameters:
+              catalog:    "${var.catalog}"
+              max_chars:  "2000"
+              overlap:    "200"
+              min_chars:  "100"
+
+      health:
+        rules:
+          - metric: RUN_DURATION_SECONDS
+            op: GREATER_THAN
+            value: 3600
+
+      max_concurrent_runs: 1
+      timeout_seconds: 7200
