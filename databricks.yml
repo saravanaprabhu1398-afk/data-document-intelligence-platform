@@ -40,3 +40,4 @@ targets:
 
 include:
   - phase1_bronze/jobs/*.yml
+  - phase2_silver/jobs/*.yml

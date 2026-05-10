@@ -1,0 +1,46 @@
+resources:
+  jobs:
+    silver_extraction:
+      name: "clinical-docs-silver-extraction-${var.env}"
+      description: "Reads new Bronze rows, parses SPL XML, extracts structured fields with ai_query, writes to Silver."
+
+      # Triggered after Bronze ingestion finishes — runs daily at 03:00 UTC
+      schedule:
+        quartz_cron_expression: "0 0 3 * * ?"
+        timezone_id: "UTC"
+        pause_status: UNPAUSED
+
+      email_notifications:
+        on_failure:
+          - ${var.alert_email}
+        no_alert_for_skipped_runs: true
+
+      tasks:
+        - task_key: setup_silver
+          description: "Create the Silver extraction table if it does not exist."
+          notebook_task:
+            notebook_path: ../notebooks/00_setup_silver.py
+            base_parameters:
+              catalog: "${var.catalog}"
+
+        - task_key: extract_silver
+          description: "Parse SPL XML and call ai_query for each pending Bronze row."
+          depends_on:
+            - task_key: setup_silver
+          notebook_task:
+            notebook_path: ../notebooks/01_extract_silver.py
+            base_parameters:
+              catalog:         "${var.catalog}"
+              model_endpoint:  "databricks-meta-llama-3-3-70b-instruct"
+              prompt_version:  "v1"
+              limit:           "200"
+              min_confidence:  "0.6"
+
+      health:
+        rules:
+          - metric: RUN_DURATION_SECONDS
+            op: GREATER_THAN
+            value: 14400   # alert after 4 hours
+
+      max_concurrent_runs: 1
+      timeout_seconds: 21600  # 6-hour hard stop

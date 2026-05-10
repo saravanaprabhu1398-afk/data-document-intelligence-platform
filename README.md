@@ -175,7 +175,7 @@ data-document-intelligence-platform/
 |---|---|---|
 | 0 — Setup | Repo, architecture, dataset | **Done** |
 | 1 — Bronze | Auto Loader ingestion | **Done** |
-| 2 — Silver | AI extraction + quarantine | Not started |
+| 2 — Silver | AI extraction + quarantine | **Done** |
 | 3 — Gold | Analytics tables + vector index | Not started |
 | 4 — Agent | RAG agent + chat UI | Not started |
 | 5 — Trust | Expectations, SLAs, cost dashboard | Not started |
