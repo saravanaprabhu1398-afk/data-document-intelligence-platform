@@ -1,0 +1,103 @@
+# Data Contract: dim_drug
+# Version: 1.0
+# Last updated: 2026-05-10
+
+table:
+  catalog: clinical-lab
+  schema:  gold
+  name:    dim_drug
+  description: >
+    One row per distinct (set_id, label_version) extracted from FDA SPL documents.
+    Surrogate key drug_sk is stable across reruns (MERGE-based refresh).
+
+metadata:
+  owner:           data-engineering
+  steward:         qua_psaravanan
+  created:         2026-05-10
+  quality_tier:    gold
+  pii:             false
+  source_tables:
+    - clinical-lab.silver.drug_label_extracted
+
+sla:
+  freshness_hours:       24
+  completeness_pct:      95.0   # at least 95% of rows must have a non-null drug_name
+  row_count_lower_bound: 10     # alert if dim_drug drops below 10 rows
+  alert_channel:         "info@datafortis.in"
+
+schema:
+  columns:
+    - name:        drug_sk
+      type:        BIGINT
+      nullable:    false
+      description: Surrogate key (IDENTITY column).
+    - name:        set_id
+      type:        STRING
+      nullable:    false
+      description: SPL set identifier.
+    - name:        label_version
+      type:        STRING
+      nullable:    true
+      description: Version number from the SPL header. NULL if not present.
+    - name:        drug_name
+      type:        STRING
+      nullable:    true
+      description: Brand or trade name. Should be non-null for ≥95% of rows.
+    - name:        generic_name
+      type:        STRING
+      nullable:    true
+      description: Non-proprietary name.
+    - name:        manufacturer
+      type:        STRING
+      nullable:    true
+      description: Labeler / marketing authorisation holder.
+    - name:        effective_date
+      type:        DATE
+      nullable:    true
+      description: Effective date of the label version. Must not be in the future.
+    - name:        mechanism_of_action
+      type:        STRING
+      nullable:    true
+      description: Pharmacological MoA paragraph.
+    - name:        indication_summary
+      type:        STRING
+      nullable:    true
+      description: Approved indication.
+    - name:        is_current_version
+      type:        BOOLEAN
+      nullable:    true
+      description: TRUE for the most recent effective_date per set_id.
+    - name:        created_at
+      type:        TIMESTAMP
+      nullable:    false
+      description: When the row was last refreshed from Silver.
+
+business_rules:
+  - "set_id is unique within (set_id, label_version)."
+  - "effective_date must not be in the future."
+  - "Exactly one row per set_id has is_current_version = TRUE (or zero if all effective_date are null)."
+
+expectations:
+  - id:      dim_drug__set_id_not_null
+    type:    not_null
+    column:  set_id
+    severity: error
+  - id:      dim_drug__drug_name_completeness
+    type:    completeness_pct
+    column:  drug_name
+    min_pct: 95.0
+    severity: error
+  - id:      dim_drug__effective_date_not_future
+    type:    sql
+    expr:    "effective_date IS NULL OR effective_date <= current_date()"
+    severity: error
+  - id:      dim_drug__unique_set_id_version
+    type:    sql
+    expr:    "1 = 1"            # placeholder — checked by uniqueness query in runner
+    severity: error
+
+changelog:
+  - version: "1.0"
+    date:    2026-05-10
+    author:  qua_psaravanan
+    changes: "Initial contract."

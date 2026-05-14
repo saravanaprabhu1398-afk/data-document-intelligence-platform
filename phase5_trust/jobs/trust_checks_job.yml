@@ -1,0 +1,42 @@
+resources:
+  jobs:
+    trust_checks:
+      name: "clinical-docs-trust-checks-${var.env}"
+      description: "Runs data-quality expectations across Bronze, Silver, and Gold layers. Fails on any error-severity violation."
+
+      # Runs daily at 05:00 UTC — one hour after Gold (04:00).
+      schedule:
+        quartz_cron_expression: "0 0 5 * * ?"
+        timezone_id: "UTC"
+        pause_status: UNPAUSED
+
+      email_notifications:
+        on_failure:
+          - ${var.alert_email}
+        no_alert_for_skipped_runs: true
+
+      tasks:
+        - task_key: setup_checks
+          description: "Create the trust schema and violation log tables if absent."
+          notebook_task:
+            notebook_path: ../expectations/00_setup_checks.py
+            base_parameters:
+              catalog: "${var.catalog}"
+
+        - task_key: run_expectations
+          description: "Run all SQL expectations; write violations; fail task on any error."
+          depends_on:
+            - task_key: setup_checks
+          notebook_task:
+            notebook_path: ../expectations/01_run_expectations.py
+            base_parameters:
+              catalog: "${var.catalog}"
+
+      health:
+        rules:
+          - metric: RUN_DURATION_SECONDS
+            op: GREATER_THAN
+            value: 1800   # alert after 30 minutes — checks should be fast
+
+      max_concurrent_runs: 1
+      timeout_seconds: 3600

@@ -1,0 +1,93 @@
+# Data Contract: drug_label_chunks
+# Version: 1.0
+# Last updated: 2026-05-10
+
+table:
+  catalog: clinical-lab
+  schema:  gold
+  name:    drug_label_chunks
+  description: >
+    Section-aware text chunks backing the Vector Search delta-sync index.
+    One row per chunk. Full overwrite on every Gold refresh.
+
+metadata:
+  owner:           ai-platform
+  steward:         qua_psaravanan
+  created:         2026-05-10
+  quality_tier:    gold
+  pii:             false
+  source_tables:
+    - clinical-lab.silver.drug_label_extracted
+
+sla:
+  freshness_hours:       24
+  row_count_lower_bound: 100   # ~50 labels × 2+ chunks each
+  alert_channel:         "info@datafortis.in"
+
+schema:
+  columns:
+    - name:        chunk_id
+      type:        STRING
+      nullable:    false
+      description: Stable id "<set_id>_<chunk_index>". Used as Vector Search primary key.
+    - name:        set_id
+      type:        STRING
+      nullable:    true
+      description: SPL set_id.
+    - name:        drug_name
+      type:        STRING
+      nullable:    true
+      description: Denormalised for retrieval display.
+    - name:        generic_name
+      type:        STRING
+      nullable:    true
+      description: Denormalised for retrieval display.
+    - name:        manufacturer
+      type:        STRING
+      nullable:    true
+      description: Denormalised for retrieval display.
+    - name:        label_version
+      type:        STRING
+      nullable:    true
+      description: Label version of the source row.
+    - name:        section_title
+      type:        STRING
+      nullable:    true
+      description: SPL section header the chunk came from.
+    - name:        chunk_index
+      type:        INT
+      nullable:    true
+      description: Order within the source label, 0-based.
+    - name:        chunk_text
+      type:        STRING
+      nullable:    false
+      description: The text the embedding model encodes.
+    - name:        created_at
+      type:        TIMESTAMP
+      nullable:    false
+      description: When the chunk was last refreshed.
+
+business_rules:
+  - "chunk_id must be unique."
+  - "chunk_text length must be between 100 and 2500 characters."
+  - "Each set_id must contribute at least one chunk."
+
+expectations:
+  - id:      chunks__chunk_id_unique
+    type:    sql
+    expr:    "1 = 1"   # placeholder — uniqueness checked in runner
+    severity: error
+  - id:      chunks__text_length_bounds
+    type:    sql
+    expr:    "length(chunk_text) BETWEEN 100 AND 2500"
+    severity: warn
+  - id:      chunks__chunk_text_not_null
+    type:    not_null
+    column:  chunk_text
+    severity: error
+
+changelog:
+  - version: "1.0"
+    date:    2026-05-10
+    author:  qua_psaravanan
+    changes: "Initial contract."

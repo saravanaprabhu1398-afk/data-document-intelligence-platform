@@ -1,0 +1,79 @@
+# Data Contract: fact_adverse_events
+# Version: 1.0
+# Last updated: 2026-05-10
+
+table:
+  catalog: clinical-lab
+  schema:  gold
+  name:    fact_adverse_events
+  description: >
+    One row per (drug_sk × adverse_event × label_version). Rebuilt from scratch
+    (TRUNCATE + INSERT) on every Gold refresh.
+
+metadata:
+  owner:           data-engineering
+  steward:         qua_psaravanan
+  created:         2026-05-10
+  quality_tier:    gold
+  pii:             false
+  source_tables:
+    - clinical-lab.silver.drug_label_extracted
+    - clinical-lab.gold.dim_drug
+
+sla:
+  freshness_hours:       24
+  row_count_lower_bound: 50    # 50 labels × ~1+ AE each = at least 50 rows
+  alert_channel:         "info@datafortis.in"
+
+schema:
+  columns:
+    - name:        drug_sk
+      type:        BIGINT
+      nullable:    false
+      description: Foreign key to gold.dim_drug.
+    - name:        set_id
+      type:        STRING
+      nullable:    true
+      description: Denormalised SPL set_id for query convenience.
+    - name:        adverse_event
+      type:        STRING
+      nullable:    false
+      description: Adverse event text as it appeared on the label.
+    - name:        label_version
+      type:        STRING
+      nullable:    true
+      description: Label version this fact was extracted from.
+    - name:        effective_date
+      type:        DATE
+      nullable:    true
+      description: Effective date of the source label.
+    - name:        created_at
+      type:        TIMESTAMP
+      nullable:    false
+      description: When this row was last refreshed.
+
+business_rules:
+  - "Every drug_sk must reference an existing row in gold.dim_drug."
+  - "adverse_event must not be blank or whitespace-only."
+  - "A drug may legitimately have many adverse events, but unrealistic outliers (>200) flag extraction issues."
+
+expectations:
+  - id:      fact_ae__drug_sk_fk_exists
+    type:    fk_exists
+    column:  drug_sk
+    references: clinical-lab.gold.dim_drug.drug_sk
+    severity: error
+  - id:      fact_ae__adverse_event_not_blank
+    type:    sql
+    expr:    "trim(adverse_event) <> ''"
+    severity: error
+  - id:      fact_ae__no_outlier_drugs
+    type:    sql
+    expr:    "1 = 1"   # placeholder — checked via aggregation in runner
+    severity: warn
+
+changelog:
+  - version: "1.0"
+    date:    2026-05-10
+    author:  qua_psaravanan
+    changes: "Initial contract."
