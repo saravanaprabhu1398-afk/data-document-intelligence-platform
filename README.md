@@ -177,7 +177,7 @@ data-document-intelligence-platform/
 | 1 — Bronze | Auto Loader ingestion | **Done** |
 | 2 — Silver | AI extraction + quarantine | **Done** |
 | 3 — Gold | Analytics tables + vector index | **Done** |
-| 4 — Agent | RAG agent + chat UI | Not started |
+| 4 — Agent | RAG agent + chat UI | **Done** |
 | 5 — Trust | Expectations, SLAs, cost dashboard | Not started |
 | 6 — Story | README, video, writeup | Not started |
 

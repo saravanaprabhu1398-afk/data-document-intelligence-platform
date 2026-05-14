@@ -1,0 +1,16 @@
+command:
+  - "streamlit"
+  - "run"
+  - "app.py"
+
+env:
+  - name: CATALOG
+    value: "clinical-lab"
+  - name: VS_ENDPOINT
+    value: "clinical_docs_vs"
+  - name: INDEX_NAME
+    value: "clinical-lab.gold.drug_label_chunks_idx"
+  - name: MODEL_ENDPOINT
+    value: "databricks-meta-llama-3-3-70b-instruct"
+  # WAREHOUSE_ID and DATABRICKS_HOST / DATABRICKS_TOKEN are injected by
+  # Databricks Apps automatically when the app is granted access to a SQL warehouse.

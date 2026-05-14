@@ -1,0 +1,7 @@
+streamlit>=1.35
+langgraph>=0.2
+langchain>=0.3
+langchain-databricks>=0.1.1
+databricks-sdk>=0.36
+databricks-vectorsearch>=0.44
+pydantic>=2.7
